@@ -1,25 +1,29 @@
 Pebble.addEventListener("ready", (e) => {
-    console.log("Hello world! - Sent from your javascript application.");
+    // Pebble.showSimpleNotificationOnPebble("hello", "pp");
 
-    // fetch("https://example.com").then(console.log).catch(console.error)
+    get_weather();
+});
 
+Pebble.addEventListener("appmessage", function (e) {
+    // console.log("AppMessage received!");
+    get_weather();
+});
+
+function get_weather() {
     /**
      * @type {PositionCallback}
      */
     function pos_success(pos) {
-        console.log(JSON.stringify(pos));
-
         const req = new XMLHttpRequest();
         req.onerror = (error) => {
             console.log(JSON.stringify(error));
         };
         req.onload = (event) => {
-            console.log(req.statusText);
             const response = JSON.parse(req.responseText);
-            console.log(JSON.stringify(response, undefined, 4));
 
             if (response.error !== undefined) {
                 console.log("failed");
+                console.log(JSON.stringify(response, undefined, 4));
                 return;
             }
 
@@ -27,35 +31,31 @@ Pebble.addEventListener("ready", (e) => {
             const daily = response.daily;
 
             const surface_pressure = Math.round(current.surface_pressure);
-            console.log(surface_pressure);
             const temperature = Math.round(current.temperature_2m);
-            console.log(temperature);
             const feels_temperature = Math.round(current.apparent_temperature);
-            console.log(feels_temperature);
-            const sunrise = new Date(response.daily.sunrise);
-            const sunrise_hour = sunrise.getHours();
-            const sunrise_min = sunrise.getHours();
-            console.log(`${sunrise_hour}:${sunrise_min}`);
-            const sunset = new Date(response.daily.sunset);
-            const sunset_hour = sunset.getHours();
-            const sunset_min = sunset.getMinutes();
-            console.log(`${sunset_hour}:${sunset_min}`);
+
+            const sunrise = new Date(daily.sunrise[0]);
+            const sunset = new Date(daily.sunset[0]);
+            const next_sunrise = new Date(daily.sunrise[0]);
 
             const dictionary = {
                 "SURFACE_PRESSURE": surface_pressure,
                 "TEMPERATURE": temperature,
                 "APPARENT_TEMPERATURE": feels_temperature,
                 "SUNRISE_SUNSET": [
-                    sunrise_hour,
-                    sunrise_min,
-                    sunset_hour,
-                    sunset_min,
+                    sunrise.getHours(),
+                    sunrise.getMinutes(),
+                    sunset.getHours(),
+                    sunset.getMinutes(),
+                    next_sunrise.getHours(),
+                    next_sunrise.getMinutes(),
                 ],
             };
             const success = () =>
                 console.log("Weather info sent to Pebble successfully!");
             const failure = () =>
                 console.log("Error sending weather info to Pebble!");
+
             Pebble.sendAppMessage(dictionary, success, failure);
         };
 
@@ -63,7 +63,7 @@ Pebble.addEventListener("ready", (e) => {
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             timezone: "auto",
-            forecast_days: "1",
+            forecast_days: "2",
             wind_speed_unit: "kn",
             daily: [
                 "sunrise",
@@ -153,11 +153,4 @@ Pebble.addEventListener("ready", (e) => {
     };
 
     navigator.geolocation.getCurrentPosition(pos_success, pos_error, options);
-
-    // Pebble.showSimpleNotificationOnPebble("hello", "pp");
-});
-
-Pebble.addEventListener("appmessage", function (e) {
-    console.log("AppMessage received!");
-    // TODO: do weather
-});
+}

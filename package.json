@@ -1,14 +1,12 @@
 {
-  "name": "watchface",
-  "author": "MakeAwesomeHappen",
+  "name": "infodump",
+  "author": "Zachary Kohnen",
   "version": "1.0.0",
-  "keywords": [
-    "pebble-app"
-  ],
+  "keywords": [],
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "watchface",
+    "displayName": "InfoDump",
     "uuid": "81135654-cae5-43e8-9013-96ce1115b994",
     "sdkVersion": "3",
     "enableMultiJS": true,

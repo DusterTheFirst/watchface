@@ -8,17 +8,57 @@ static TextLayer *s_time_layer;
 static char s_time_buffer[6]; // "00:00" + NUL
 
 static TextLayer *s_sunrise_sunset_layer;
-static char s_sunrise_sunset_buffer[] = "00:00"; // "00:00" + NUL
+static char s_sunrise_sunset_buffer[6]; // "00:00" + NUL
 
 static TextLayer *s_temperature_layer;
-static char s_temperature_buffer[] = "+00°C"; // "+00°C" + NUL
+static char s_temperature_buffer[7]; // "-00°C" + NUL
 static TextLayer *s_apparent_temperature_layer;
-static char s_apparent_temperature_buffer[] = "+00°C"; // "+00°C" + NUL
+static char s_apparent_temperature_buffer[7]; // "-00°C" + NUL
 
 static TextLayer *s_surface_pressure_layer;
 static char s_surface_pressure_buffer[6]; // "Q1019" + NUL
 
 static Layer *s_graphics_layer;
+
+struct sunrise_sunset {
+    uint8_t sunrise_h;
+    uint8_t sunrise_m;
+    uint8_t sunset_h;
+    uint8_t sunset_m;
+    uint8_t next_sunrise_h;
+    uint8_t next_sunrise_m;
+};
+
+static struct sunrise_sunset s_sunrise_sunset;
+
+static void show_sunrise_sunset() {
+    uint16_t sunrise_total_m = s_sunrise_sunset.sunrise_h * 60 + s_sunrise_sunset.sunrise_m;
+    uint16_t sunset_total_m = s_sunrise_sunset.sunset_h * 60 + s_sunrise_sunset.sunset_m;
+
+    time_t current_time = time(NULL);
+    struct tm *local_time = localtime(&current_time);
+
+    uint16_t local_time_total_m = local_time->tm_hour * 60 + local_time->tm_min;
+
+    uint8_t hours;
+    uint8_t minutes;
+
+    if (local_time_total_m > sunrise_total_m) {
+        if (local_time_total_m > sunset_total_m) {
+            hours = s_sunrise_sunset.next_sunrise_h;
+            minutes = s_sunrise_sunset.next_sunrise_m;
+        } else {
+            hours = s_sunrise_sunset.sunset_h;
+            minutes = s_sunrise_sunset.sunset_m;
+        }
+    } else {
+        hours = s_sunrise_sunset.sunrise_h;
+        minutes = s_sunrise_sunset.sunrise_m;
+    }
+
+    snprintf(s_sunrise_sunset_buffer, sizeof(s_sunrise_sunset_buffer), "%02i:%02i", hours, minutes);
+    text_layer_set_text(s_sunrise_sunset_layer, s_sunrise_sunset_buffer);
+}
 
 static void show_time(struct tm *tick_time) {
     strftime(s_time_buffer, sizeof(s_time_buffer), clock_is_24h_style() ? "%H:%M" : "%I:%M", tick_time);
@@ -26,6 +66,8 @@ static void show_time(struct tm *tick_time) {
 
     text_layer_set_text(s_time_layer, s_time_buffer);
     text_layer_set_text(s_date_layer, s_date_buffer);
+
+    show_sunrise_sunset();
 }
 
 static void draw_graphics(struct Layer *layer, GContext *ctx) {
@@ -107,16 +149,21 @@ static void window_unload(Window *window) {
 
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
     show_time(tick_time);
+
+    // Get weather update every 30 minutes
+    if (tick_time->tm_min % 30 == 0) {
+        DictionaryIterator *iter;
+        app_message_outbox_begin(&iter);
+        app_message_outbox_send();
+    }
 }
 
 static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
     Tuple *tuple = dict_read_first(iterator);
     while (tuple != NULL) {
-        APP_LOG(APP_LOG_LEVEL_INFO, "message RX");
-
         if (tuple->key == MESSAGE_KEY_SURFACE_PRESSURE) {
             if (tuple->type != TUPLE_INT) {
-                APP_LOG(APP_LOG_LEVEL_ERROR, "UNEXPECTED SURFACE_PRESSURE TYPE");
+                APP_LOG(APP_LOG_LEVEL_ERROR, "UNEXPECTED SURFACE_PRESSURE TYPE: %i", tuple->type);
                 break;
             }
 
@@ -127,15 +174,59 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
 
             int16_t pressure = tuple->value->int32;
 
-            // TODO: leading zero?
-            snprintf(s_surface_pressure_buffer, sizeof(s_surface_pressure_buffer), "Q%i", pressure);
+            snprintf(s_surface_pressure_buffer, sizeof(s_surface_pressure_buffer), "Q%04i", pressure);
             text_layer_set_text(s_surface_pressure_layer, s_surface_pressure_buffer);
         } else if (tuple->key == MESSAGE_KEY_TEMPERATURE) {
+            if (tuple->type != TUPLE_INT) {
+                APP_LOG(APP_LOG_LEVEL_ERROR, "UNEXPECTED TEMPERATURE TYPE: %i", tuple->type);
+                break;
+            }
+
+            if (tuple->length != 4) {
+                APP_LOG(APP_LOG_LEVEL_ERROR, "UNEXPECTED TEMPERATURE LENGTH: %i", tuple->length);
+                break;
+            }
+
+            int16_t temperature = tuple->value->int32;
+
+            snprintf(s_temperature_buffer, sizeof(s_temperature_buffer), "%3i°C", temperature);
             text_layer_set_text(s_temperature_layer, s_temperature_buffer);
         } else if (tuple->key == MESSAGE_KEY_APPARENT_TEMPERATURE) {
+            if (tuple->type != TUPLE_INT) {
+                APP_LOG(APP_LOG_LEVEL_ERROR, "UNEXPECTED APPARENT_TEMPERATURE TYPE: %i", tuple->type);
+                break;
+            }
+
+            if (tuple->length != 4) {
+                APP_LOG(APP_LOG_LEVEL_ERROR, "UNEXPECTED APPARENT_TEMPERATURE LENGTH: %i", tuple->length);
+                break;
+            }
+
+            int16_t apparent_temperature = tuple->value->int32;
+
+            snprintf(s_apparent_temperature_buffer, sizeof(s_apparent_temperature_buffer), "%3i°C", apparent_temperature);
             text_layer_set_text(s_apparent_temperature_layer, s_apparent_temperature_buffer);
         } else if (tuple->key == MESSAGE_KEY_SUNRISE_SUNSET) {
-            text_layer_set_text(s_sunrise_sunset_layer, s_sunrise_sunset_buffer);
+            if (tuple->type != TUPLE_BYTE_ARRAY) {
+                APP_LOG(APP_LOG_LEVEL_ERROR, "UNEXPECTED SUNRISE_SUNSET TYPE: %i", tuple->type);
+                break;
+            }
+
+            if (tuple->length != 6) {
+                APP_LOG(APP_LOG_LEVEL_ERROR, "UNEXPECTED SUNRISE_SUNSET LENGTH: %i", tuple->length);
+                break;
+            }
+
+            s_sunrise_sunset = (struct sunrise_sunset){
+                .sunrise_h = tuple->value->data[0],
+                .sunrise_m = tuple->value->data[1],
+                .sunset_h = tuple->value->data[2],
+                .sunset_m = tuple->value->data[3],
+                .next_sunrise_h = tuple->value->data[4],
+                .next_sunrise_m = tuple->value->data[5],
+            };
+
+            show_sunrise_sunset();
         } else {
             APP_LOG(APP_LOG_LEVEL_ERROR, "Unexpected tuple key!");
         }
