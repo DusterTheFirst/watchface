@@ -13,13 +13,19 @@
     "sdkVersion": "3",
     "enableMultiJS": true,
     "targetPlatforms": [
-      "emery"
+      "flint"
+    ],
+    "capabilities": [
+      "location"
     ],
     "watchapp": {
       "watchface": true
     },
     "messageKeys": [
-      "dummy"
+      "SURFACE_PRESSURE",
+      "TEMPERATURE",
+      "APPARENT_TEMPERATURE",
+      "SUNRISE_SUNSET"
     ],
     "resources": {
       "media": []
