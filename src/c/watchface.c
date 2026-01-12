@@ -21,6 +21,7 @@ static char s_surface_pressure_buffer[6]; // "Q1019" + NUL
 static Layer *s_graphics_layer;
 
 struct sunrise_sunset {
+    time_t updated;
     uint8_t sunrise_h;
     uint8_t sunrise_m;
     uint8_t sunset_h;
@@ -32,6 +33,10 @@ struct sunrise_sunset {
 static struct sunrise_sunset s_sunrise_sunset;
 
 static void show_sunrise_sunset() {
+    if (s_sunrise_sunset.updated == 0) {
+        return;
+    }
+
     uint16_t sunrise_total_m = s_sunrise_sunset.sunrise_h * 60 + s_sunrise_sunset.sunrise_m;
     uint16_t sunset_total_m = s_sunrise_sunset.sunset_h * 60 + s_sunrise_sunset.sunset_m;
 
@@ -218,6 +223,7 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
             }
 
             s_sunrise_sunset = (struct sunrise_sunset){
+                .updated = time(NULL),
                 .sunrise_h = tuple->value->data[0],
                 .sunrise_m = tuple->value->data[1],
                 .sunset_h = tuple->value->data[2],
