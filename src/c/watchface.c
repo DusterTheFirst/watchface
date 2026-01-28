@@ -278,6 +278,10 @@ static void init(void) {
 
 static void deinit(void) {
     window_destroy(s_window);
+
+    tick_timer_service_unsubscribe();
+
+    app_message_deregister_callbacks();
 }
 
 int main(void) {
